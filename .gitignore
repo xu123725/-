@@ -1,0 +1,51 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+*.spec
+
+# 虚拟环境
+.venv/
+venv/
+
+# 数据库 (本地数据，不上传)
+*.db
+db/backups/
+
+# 用户上传文件
+data/uploads/
+
+# 日志
+*.log
+data/app.log
+
+# IDE / Trae 内部文件
+.trae/specs/
+.trae/token/
+.trae/documents/
+.trae/skills/
+.trae/skill-config.json
+
+# 打包产物
+SmartQbank_Project/build/
+SmartQbank_Project/dist/
+
+# 测试
+.coverage
+
+# 用户数据目录
+SmartQbank_Project/data/
+
+# 其他工程
+SmartQbank_Web/
+Gateway_Service/
+
+# Trae 开发文档
+.trae/documents/
+
+# Flet 离线运行时（体积大，建议单独分发）
+flet-windows/
