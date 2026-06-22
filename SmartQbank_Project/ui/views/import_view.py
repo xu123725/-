@@ -109,9 +109,9 @@ class ImportView:
                     file_signature = f"{file_stat.st_size}:{file_stat.st_mtime_ns}"
                     
                     with get_connection() as conn:
-                        upsert_imported_file(conn, fname, file_signature, 0, status="processing")
                         cached = get_cached_import(conn, fname, file_signature)
                         failed_recently = has_recent_failed_import(conn, fname, file_signature)
+                        upsert_imported_file(conn, fname, file_signature, 0, status="processing")
                         conn.commit()
                     
                     if cached:
@@ -156,6 +156,9 @@ class ImportView:
                     status_text.value = f"{fname} 解析完成"
                     self.page.update()
                 except Exception as ex:
+                    with get_connection() as conn:
+                        upsert_imported_file(conn, fname, file_signature, 0, status="failed", last_error=str(ex))
+                        conn.commit()
                     failed_files.append(f"{fname}: {str(ex)}")
                     status_text.value = f"{fname} 处理失败"
                     self.page.update()

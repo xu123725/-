@@ -6,3 +6,4 @@ openai>=1.14.0
 flet>=0.26.0
 pypdf>=4.2.0
 pypdfium2>=5.0.0
+supabase>=2.4.0 # 用于 Web 部署的远程数据库驱动

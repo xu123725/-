@@ -1,13 +1,16 @@
 from __future__ import annotations
+import os
 import sqlite3
 import shutil
 import time
 from pathlib import Path
 
-from config import DB_DIR, DB_PATH, UPLOAD_DIR
+from config import DB_DIR, DB_PATH, UPLOAD_DIR, is_web_deploy
 
 
 def get_connection() -> sqlite3.Connection:
+    if is_web_deploy():
+        raise NotImplementedError("Web 部署环境暂不支持本地 SQLite 数据库。请配置远程数据库（如 PostgreSQL 或 MySQL）。")
     conn = sqlite3.connect(DB_PATH, timeout=10)
     conn.execute("PRAGMA journal_mode=WAL")
     conn.row_factory = sqlite3.Row
@@ -16,6 +19,8 @@ def get_connection() -> sqlite3.Connection:
 
 def backup_database() -> str:
     """备份数据库到当前目录下的 backups 文件夹"""
+    if is_web_deploy():
+        raise PermissionError("Web 部署环境不支持执行本地数据库备份操作。")
     try:
         backup_dir = DB_DIR / "backups"
         backup_dir.mkdir(parents=True, exist_ok=True)
@@ -35,8 +40,13 @@ def backup_database() -> str:
 
 
 def ensure_dirs() -> None:
+    if is_web_deploy():
+        return
+    from config import DB_DIR, UPLOAD_DIR, RESOURCE_DIR, DATA_DIR
     DB_DIR.mkdir(parents=True, exist_ok=True)
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    RESOURCE_DIR.mkdir(parents=True, exist_ok=True)
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def _ensure_question_type_column(conn: sqlite3.Connection) -> None:
@@ -58,6 +68,8 @@ def _ensure_imported_files_columns(conn: sqlite3.Connection) -> None:
 
 
 def init_db() -> None:
+    if is_web_deploy():
+        return
     with get_connection() as conn:
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute(
@@ -130,11 +142,9 @@ def init_db() -> None:
             )
             """
         )
-        # 强制删除旧的 troubleshooting 表，以便重新创建带 image_path 字段的新表
-        conn.execute("DROP TABLE IF EXISTS troubleshooting")
         conn.execute(
             """
-            CREATE TABLE troubleshooting (
+            CREATE TABLE IF NOT EXISTS troubleshooting (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 category TEXT NOT NULL,
                 title TEXT NOT NULL,
@@ -147,12 +157,18 @@ def init_db() -> None:
             )
             """
         )
+        # 兼容旧版本：补充缺失的字段
+        troubleshooting_cols = [row["name"] for row in conn.execute("PRAGMA table_info(troubleshooting)").fetchall()]
+        if troubleshooting_cols and "image_path" not in troubleshooting_cols:
+            conn.execute("ALTER TABLE troubleshooting ADD COLUMN image_path TEXT")
         # 尝试创建 FTS5 虚拟表用于全文检索
         try:
-            conn.execute("DROP TABLE IF EXISTS knowledge_fts")
-            conn.execute("CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_fts USING fts5(content, title, content='knowledge_base', content_rowid='id')")
-            # 重新填充现有的知识库数据到 FTS5 虚拟表
-            conn.execute("INSERT INTO knowledge_fts(knowledge_fts) VALUES('rebuild')")
+            fts_exists = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='knowledge_fts'").fetchone()
+            if not fts_exists:
+                conn.execute("CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_fts USING fts5(content, title, content='knowledge_base', content_rowid='id')")
+                # 初始填充现有的知识库数据到 FTS5 虚拟表
+                conn.execute("INSERT INTO knowledge_fts(knowledge_fts) VALUES('rebuild')")
+            
             # 创建触发器以保持 FTS 同步
             conn.execute("""
                 CREATE TRIGGER IF NOT EXISTS knowledge_base_ai AFTER INSERT ON knowledge_base BEGIN

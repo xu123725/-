@@ -65,8 +65,6 @@ def _reset_exam_state(state: Any) -> None:
 
 
 def _clean_response_text(text: str) -> str:
-    text = text.replace("**", "")
-    text = text.replace("*", "")
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
 
@@ -137,13 +135,17 @@ def process_user_request(prompt: str, state: Any) -> str:
     if knowledge_context:
         system_prompt += f"\n\n以下是相关的参考知识，请优先结合这些知识回答用户问题，并注明出处：\n{knowledge_context}"
     
+    messages = [{"role": "system", "content": system_prompt}]
+    if hasattr(state, "chat_history") and state.chat_history:
+        for msg in state.chat_history[-10:]:
+            messages.append({"role": msg.get("role", "user"), "content": msg.get("content", "")})
+    else:
+        messages.append({"role": "user", "content": prompt})
+    
     try:
         return _clean_response_text(
             client.chat_completion(
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": prompt},
-                ],
+                messages=messages,
                 temperature=0.4,
                 max_tokens=1200,
             )

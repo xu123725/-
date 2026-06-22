@@ -3,7 +3,7 @@ import os
 import sys
 
 import flet as ft
-from config import DATA_DIR, BASE_DIR, run_startup_checks
+from config import DATA_DIR, BASE_DIR, run_startup_checks, is_web_deploy
 from ui.state import StateManager
 from ui.theme import AppColors, AppStyles
 from ui.views.import_view import ImportView
@@ -12,27 +12,40 @@ from ui.views.exam_view import ExamView
 from ui.views.wrong_book_view import WrongBookView
 from ui.views.chat_view import ChatView
 from ui.views.troubleshoot_view import TroubleshootView
+from ui.views.dashboard_view import DashboardView
 from ui.views.settings_view import SettingsView
 from ui.views.home_view import HomeView
 from db.database import init_app_environment
 from utils.logger import setup_logging
 
-setup_logging(DATA_DIR / "app.log")
 logger = logging.getLogger(__name__)
 
 def main(page: ft.Page):
-    init_app_environment()
+    # 初始化检查结果，Web环境下跳过本地环境检查
+    check_result = {"warnings": [], "fatals": [], "mode": "normal"}
 
-    check_result = run_startup_checks()
-    for msg in check_result["warnings"]:
-        logger.warning(msg)
-    if check_result["fatals"]:
-        for msg in check_result["fatals"]:
-            logger.error(msg)
+    if page.web:
+        # 同步环境变量，确保数据库等模块感知 Web 环境
+        os.environ["WEB_DEPLOY"] = "true"
+    else:
+        setup_logging(DATA_DIR / "app.log")
+        init_app_environment()
+        check_result = run_startup_checks()
+
+    # 统一环境判定
+    is_web_env = is_web_deploy()
+
+    if not is_web_env:
+        for msg in check_result["warnings"]:
+            logger.warning(msg)
+        if check_result["fatals"]:
+            for msg in check_result["fatals"]:
+                logger.error(msg)
 
     page.title = "自动气象站智慧学习平台"
-    page.window_width = 1280
-    page.window_height = 850
+    if not is_web_env:
+        page.window_width = 1280
+        page.window_height = 850
     page.theme_mode = ft.ThemeMode.LIGHT
     page.bgcolor = AppColors.BACKGROUND
     page.padding = 0
@@ -70,6 +83,7 @@ def main(page: ft.Page):
         4: WrongBookView(page, state, lambda index: show_view(index)),
         5: TroubleshootView(page, state),
         6: SettingsView(page, state),
+        7: DashboardView(page, state),
     }
 
     content_area = ft.Container(
@@ -129,6 +143,11 @@ def main(page: ft.Page):
                 icon=ft.Icons.SETTINGS_OUTLINED, 
                 selected_icon=ft.Icons.SETTINGS, 
                 label="设置",
+            ),
+            ft.NavigationRailDestination(
+                icon=ft.Icons.INSIGHTS_OUTLINED, 
+                selected_icon=ft.Icons.INSIGHTS, 
+                label="学情",
             ),
         ],
         on_change=on_nav_change,

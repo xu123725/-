@@ -119,10 +119,13 @@ class HomeView:
             ("错题强化", ft.Icons.BOOKMARK_ROUNDED, "薄弱环节 针对性巩固", 4, None, 4, 180, None, 
              ft.LinearGradient([ft.Colors.AMBER_700, ft.Colors.AMBER_500])),
             
-            ("排障实操", ft.Icons.HANDYMAN_ROUNDED, "交互式故障 案例模拟", 5, None, 6, 180, None, 
+            ("排障实操", ft.Icons.HANDYMAN_ROUNDED, "交互式故障 案例模拟", 5, None, 4, 180, None, 
              ft.LinearGradient([ft.Colors.RED_700, ft.Colors.RED_500])),
             
-            ("系统设置", ft.Icons.SETTINGS_SUGGEST_ROUNDED, "个性化学习 环境配置", 6, None, 6, 180, None, 
+            ("学情分析", ft.Icons.INSIGHTS_ROUNDED, "学习行为 智能可视化", 7, None, 4, 180, None, 
+             ft.LinearGradient(["#7C3AED", "#A78BFA"])),
+            
+            ("系统设置", ft.Icons.SETTINGS_SUGGEST_ROUNDED, "个性化学习 环境配置", 6, None, 4, 180, None, 
              ft.LinearGradient([ft.Colors.BLUE_GREY_700, ft.Colors.BLUE_GREY_500])),
         ]
 

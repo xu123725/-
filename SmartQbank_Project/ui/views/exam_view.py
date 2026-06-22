@@ -8,6 +8,7 @@ from core.processor import get_or_generate_analysis, generate_learning_report_st
 from db.crud import add_wrong_question, insert_user_log, is_in_wrong_book, remove_wrong_question
 from db.database import get_connection
 from ui.state import StateManager
+from ui.theme import AppColors
 
 def _normalize_answer(value: str) -> str:
     return (value or "").strip().lower()
@@ -78,23 +79,34 @@ class ExamView:
             self.state.exam_state.is_running = False
             self.state.exam_state.submitted = True
             paper = self.state.generated_paper or []
-            self.state.exam_state.score = sum(
-                1
-                for idx, q in enumerate(paper)
-                if _is_answer_correct(self.state.exam_state.answers.get(idx, ""), q.get("answer", ""))
-            )
+            # 计算成绩并记录错题
+            self.state.exam_state.score = 0
+            with get_connection() as conn:
+                for idx, q in enumerate(paper):
+                    is_correct = _is_answer_correct(self.state.exam_state.answers.get(idx, ""), q.get("answer", ""))
+                    insert_user_log(conn, q["id"], is_correct)
+                    if is_correct:
+                        self.state.exam_state.score += 1
+                    else:
+                        add_wrong_question(conn, q["id"])
+                conn.commit()
             refresh_view()
             
-            # 异步流式生成学习报告
+            # 异步生成 AI 学习报告（不阻塞界面）
             def generate_report():
-                client = LLMClient(
-                    api_key=config.get_api_key(),
-                    base_url=config.get_api_base_url(),
-                    model=config.get_api_model(),
-                )
-                self.state.exam_state.exam_report = ""
-                for chunk in generate_learning_report_stream(client, paper, self.state.exam_state.answers):
-                    self.state.exam_state.exam_report += chunk
+                try:
+                    client = LLMClient(
+                        api_key=config.get_api_key(),
+                        base_url=config.get_api_base_url(),
+                        model=config.get_api_model(),
+                        timeout=30,
+                    )
+                    self.state.exam_state.exam_report = ""
+                    for chunk in generate_learning_report_stream(client, paper, self.state.exam_state.answers):
+                        self.state.exam_state.exam_report += chunk
+                        self.page.update()
+                except Exception:
+                    self.state.exam_state.exam_report = "（AI 报告生成超时，请查看下方的本地统计结果）"
                     self.page.update()
             
             threading.Thread(target=generate_report, daemon=True).start()
@@ -281,56 +293,149 @@ class ExamView:
 
         def render_result():
             paper = self.state.generated_paper or []
+            score = self.state.exam_state.score
+            total = len(paper)
+
             def restart(_):
                 reset_state()
                 refresh_view()
-            
-            report_content = self.state.exam_state.exam_report
-            
-            # 使用 Markdown 显示流式文本
-            report_markdown = ft.Markdown(
-                report_content, 
-                selectable=True,
-                extension_set=ft.MarkdownExtensionSet.GITHUB_WEB_FLAVOR
-            )
-            
-            if not report_content:
-                report_display = ft.Row([
-                    ft.ProgressRing(width=16, height=16, stroke_width=2),
-                    ft.Text(" 高级工程师正在为您分析答题情况...", italic=True, color=ft.Colors.BLUE_GREY)
-                ])
+
+            # 错题列表
+            wrong_list = ft.Column(spacing=8)
+            for idx, q in enumerate(paper):
+                user_ans = self.state.exam_state.answers.get(idx, "")
+                correct_ans = q.get("answer", "")
+                is_correct = _is_answer_correct(user_ans, correct_ans)
+                if not is_correct and user_ans:  # 只展示做错且作答了的
+                    wrong_list.controls.append(
+                        ft.Container(
+                            content=ft.Column([
+                                ft.Text(f"第{idx+1}题: {q.get('stem', '')[:50]}...", weight=ft.FontWeight.W_500, size=13),
+                                ft.Row([
+                                    ft.Text(f"你的答案: {user_ans}", color=ft.Colors.RED, size=12),
+                                    ft.Text("  →  ", color=ft.Colors.GREY, size=12),
+                                    ft.Text(f"正确答案: {correct_ans}", color=ft.Colors.GREEN, size=12),
+                                ]),
+                            ], spacing=4),
+                            padding=10,
+                            bgcolor=ft.Colors.RED_50,
+                            border_radius=8,
+                            border=ft.Border.all(1, ft.Colors.RED_100),
+                        )
+                    )
+            wrong_count = len(wrong_list.controls)
+
+            # 正确率环形文字
+            accuracy = score / total * 100 if total > 0 else 0
+            accuracy_color = ft.Colors.GREEN if accuracy >= 80 else (ft.Colors.AMBER if accuracy >= 60 else ft.Colors.RED)
+
+            # ===== 本地统计报告（即时显示，不依赖 AI）=====
+            local_report = ft.Column(spacing=10)
+
+            # 评语
+            if accuracy >= 90:
+                comment = "优秀！知识掌握非常扎实，继续保持！"
+                comment_color = ft.Colors.GREEN
+            elif accuracy >= 80:
+                comment = "良好！大部分知识点已掌握，注意薄弱环节。"
+                comment_color = ft.Colors.BLUE
+            elif accuracy >= 60:
+                comment = "一般。建议重点复习错题涉及的知识点。"
+                comment_color = ft.Colors.AMBER
             else:
-                report_display = ft.Container(
+                comment = "需要加强。建议系统性地回顾相关课程内容。"
+                comment_color = ft.Colors.RED
+
+            local_report.controls.extend([
+                ft.Row([
+                    ft.Icon(ft.Icons.ANALYTICS, color=ft.Colors.BLUE_600),
+                    ft.Text("考试成绩统计", size=16, weight="bold"),
+                ]),
+                ft.Row([
+                    ft.Text(f"正确率 {accuracy:.0f}%", size=14, color=accuracy_color, weight=ft.FontWeight.BOLD),
+                    ft.Text(f"  ·  答对 {score} 题  ·  答错 {wrong_count} 题", size=14, color=AppColors.TEXT_SECONDARY),
+                ]),
+                ft.Text(comment, size=14, color=comment_color),
+            ])
+
+            if wrong_count > 0:
+                local_report.controls.append(
+                    ft.Container(
+                        content=ft.Text(f"{wrong_count} 道错题已自动加入错题本，可前往「错题本」针对性练习", size=13, color=ft.Colors.BLUE_600),
+                        padding=ft.Padding.only(top=4),
+                    )
+                )
+
+            # ===== AI 报告区域 =====
+            report_content = self.state.exam_state.exam_report
+            if report_content and report_content.startswith("（AI 报告生成超时"):
+                ai_section = ft.Container(
                     content=ft.Column([
                         ft.Row([
-                            ft.Icon(ft.Icons.ANALYTICS, color=ft.Colors.BLUE_600),
-                            ft.Text("AI 智能学习诊断报告", size=18, weight="bold", color=ft.Colors.BLUE_600),
+                            ft.Icon(ft.Icons.INFO_OUTLINE, color=ft.Colors.AMBER, size=18),
+                            ft.Text("AI 详细报告生成超时", size=14, color=ft.Colors.AMBER),
                         ]),
-                        report_markdown,
-                    ], spacing=10),
-                    padding=20,
-                    bgcolor=ft.Colors.BLUE_50,
-                    border_radius=12,
-                    border=ft.Border.all(1, ft.Colors.BLUE_100),
+                        ft.Text("已为你生成本地统计分析（上方），可据此制定复习计划。", size=13, color=AppColors.TEXT_SECONDARY),
+                    ], spacing=6),
+                    padding=14,
+                    bgcolor=ft.Colors.AMBER_50,
+                    border_radius=10,
                 )
+            elif report_content:
+                ai_section = ft.Container(
+                    content=ft.Column([
+                        ft.Row([
+                            ft.Icon(ft.Icons.AUTO_AWESOME, color=ft.Colors.PURPLE, size=18),
+                            ft.Text("AI 智能学习诊断报告", size=16, weight="bold"),
+                        ]),
+                        ft.Text(report_content, size=13, selectable=True),
+                    ], spacing=10),
+                    padding=16,
+                    bgcolor=ft.Colors.PURPLE_50,
+                    border_radius=12,
+                    border=ft.Border.all(1, ft.Colors.PURPLE_100),
+                )
+            else:
+                ai_section = ft.Row([
+                    ft.ProgressRing(width=16, height=16, stroke_width=2),
+                    ft.Text(" AI 正在生成详细分析报告...", italic=True, color=AppColors.TEXT_SECONDARY, size=13),
+                ], spacing=10)
+
+            # ===== 错题展开列表 =====
+            wrong_section = ft.Container() if wrong_count == 0 else ft.Container(
+                content=ft.Column([
+                    ft.Row([
+                        ft.Icon(ft.Icons.ERROR_OUTLINE, color=ft.Colors.RED, size=18),
+                        ft.Text(f"错题回顾（{wrong_count} 题）", size=16, weight="bold"),
+                    ]),
+                    wrong_list,
+                ], spacing=10, scroll=ft.ScrollMode.AUTO),
+                padding=ft.Padding.only(top=12),
+            )
 
             return ft.Column([
                 ft.Container(
                     content=ft.Column([
                         ft.Text("考试结束", size=28, weight="bold", color=ft.Colors.BLUE_GREY_900),
-                        ft.Text(f"得分: {self.state.exam_state.score} / {len(paper)}", size=22, weight="w500", color=ft.Colors.BLUE_600),
+                        ft.Text(f"得分: {score} / {total}", size=22, weight="w500", color=ft.Colors.BLUE_600),
                     ], horizontal_alignment=ft.CrossAxisAlignment.CENTER),
                     alignment=ft.Alignment(0, 0),
                     padding=20,
                 ),
-                ft.Divider(height=1, color=ft.Colors.GREY_300),
-                report_display,
+                ft.Container(
+                    content=local_report,
+                    padding=16,
+                    bgcolor=ft.Colors.BLUE_50,
+                    border_radius=12,
+                ),
+                ai_section,
+                wrong_section,
                 ft.Container(height=20),
                 ft.Row([
                     ft.ElevatedButton("返回首页", icon=ft.Icons.HOME, on_click=restart),
-                    ft.OutlinedButton("查看错题 (暂不可用)", icon=ft.Icons.LIST_ALT, disabled=True),
+                    ft.OutlinedButton("去错题本练习", icon=ft.Icons.BOOKMARK, on_click=lambda _: (reset_state(), self.page.update()) or None),
                 ], alignment=ft.MainAxisAlignment.CENTER),
-            ], spacing=10, scroll=ft.ScrollMode.AUTO)
+            ], spacing=12, scroll=ft.ScrollMode.AUTO)
 
         def refresh_view():
             content.controls.clear()

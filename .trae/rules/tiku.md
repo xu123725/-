@@ -1,3 +1,6 @@
+---
+alwaysApply: true
+---
 项目框架
 SmartQbank_Project/
 ├── app.py                # 项目入口：Streamlit 界面与路由逻辑

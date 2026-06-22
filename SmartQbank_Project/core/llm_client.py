@@ -21,6 +21,7 @@ class LLMClient:
         self.fallback_model = os.getenv("FALLBACK_MODEL", "deepseek-chat")
         self.timeout = timeout
         self.trace_id = ""
+        self.session = requests.Session()
         if not self.api_key:
             raise ValueError("未配置 API_KEY，无法调用模型接口。")
 
@@ -34,7 +35,7 @@ class LLMClient:
         try:
             # 确保 API Key 不包含非 ASCII 字符，避免 Header 编码错误
             clean_api_key = str(self.api_key).encode('ascii', 'ignore').decode('ascii').strip()
-            response = requests.post(
+            response = self.session.post(
                 f"{self.base_url}/chat/completions",
                 headers={
                     "Authorization": f"Bearer {clean_api_key}",
@@ -106,19 +107,6 @@ class LLMClient:
         content = data["choices"][0]["message"].get("content") or ""
         if content.strip():
             return content
-        if self.model == "deepseek-reasoner":
-            fallback_payload: dict[str, Any] = {
-                "model": self.fallback_model,
-                "messages": messages,
-                "temperature": temperature,
-                "max_tokens": max_tokens,
-            }
-            if response_format:
-                fallback_payload["response_format"] = response_format
-            fallback_data = self._post(fallback_payload)
-            fallback_content = fallback_data["choices"][0]["message"].get("content") or ""
-            if fallback_content.strip():
-                return fallback_content
         raise ValueError("模型返回空内容，请检查模型配置或提示词。")
 
     def chat_stream(
@@ -143,7 +131,7 @@ class LLMClient:
 
         clean_api_key = str(self.api_key).encode('ascii', 'ignore').decode('ascii').strip()
         try:
-            response = requests.post(
+            response = self.session.post(
                 f"{self.base_url}/chat/completions",
                 headers={
                     "Authorization": f"Bearer {clean_api_key}",

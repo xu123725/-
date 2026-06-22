@@ -16,6 +16,10 @@ def get_app_path() -> Path:
         return Path(sys.executable).parent
     return Path(__file__).resolve().parent
 
+def is_web_deploy() -> bool:
+    """判断是否为 Web 部署环境 (Netlify 等)"""
+    return os.environ.get("WEB_DEPLOY") == "true"
+
 def get_data_dir() -> Path:
     app_name = "AutomaticWeatherStationAgent"  # 使用新的内部标识名，避免中文字符路径问题
     if getattr(sys, 'frozen', False):
@@ -51,17 +55,16 @@ RESOURCE_DIR = DATA_DIR / "resource"
 SETTINGS_PATH = DATA_DIR / "settings.json"
 DB_PATH = DB_DIR / "qbank.db"
 
-# 确保目录存在
-os.makedirs(DB_DIR, exist_ok=True)
-os.makedirs(UPLOAD_DIR, exist_ok=True)
-os.makedirs(RESOURCE_DIR, exist_ok=True)
-os.makedirs(DATA_DIR, exist_ok=True)
+# 目录确保存在逻辑已移至 db.database.init_app_environment 中
+# 以免在 Web 环境构建时因权限问题导致失败
 
 DEFAULT_API_KEY = "sk-3fe69a05f74343378c113884838f468d"
 DEFAULT_API_BASE_URL = "https://api.deepseek.com"
 DEFAULT_API_MODEL = "deepseek-reasoner"
 
 def load_settings() -> dict[str, Any]:
+    if is_web_deploy():
+        return {}
     if SETTINGS_PATH.exists():
         try:
             with open(SETTINGS_PATH, "r", encoding="utf-8") as f:
@@ -71,8 +74,14 @@ def load_settings() -> dict[str, Any]:
     return {}
 
 def save_settings(settings: dict[str, Any]):
-    with open(SETTINGS_PATH, "w", encoding="utf-8") as f:
-        json.dump(settings, f, indent=4, ensure_ascii=False)
+    if is_web_deploy():
+        print("Web 部署环境跳过本地设置保存")
+        return
+    try:
+        with open(SETTINGS_PATH, "w", encoding="utf-8") as f:
+            json.dump(settings, f, indent=4, ensure_ascii=False)
+    except Exception as e:
+        print(f"保存设置失败: {e}")
 
 # 初始化配置加载
 _current_settings = load_settings()
@@ -130,6 +139,14 @@ def run_startup_checks() -> dict[str, Any]:
     warnings: list[str] = []
     fatals: list[str] = []
     mode = STARTUP_CHECK_MODE if STARTUP_CHECK_MODE in {"off", "warn", "strict"} else "warn"
+
+    if is_web_deploy():
+        return {
+            "mode": "normal",
+            "warnings": [],
+            "fatals": [],
+            "ok": True,
+        }
 
     # 动态获取当前 API 配置
     current_key = get_api_key()

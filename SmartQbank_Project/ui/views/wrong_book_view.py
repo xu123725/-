@@ -31,7 +31,7 @@ class WrongBookView:
             self.state.exam_state.revealed = {}
             self.state.exam_state.score = 0
             self.state.exam_state.time_left = 0
-            self.open_view(2)
+            self.open_view(3)
 
         def refresh_list() -> None:
             questions = load_questions()
