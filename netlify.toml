@@ -1,5 +1,5 @@
 [build]
-  command = "pip install -r tiku/SmartQbank_Project/requirements.txt && flet publish tiku/SmartQbank_Project/main_desktop.py --output dist"
+  command = "pip install -r SmartQbank_Project/requirements.txt && flet publish SmartQbank_Project/main_desktop.py --distpath /opt/build/repo/dist"
   publish = "dist"
 [build.environment]
   PYTHON_VERSION = "3.10"
