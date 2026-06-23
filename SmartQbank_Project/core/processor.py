@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import sqlite3
 from typing import Any
+from sqlalchemy.orm import Session
+import json
 
-from db.crud import fetch_question_for_analysis, insert_questions_batch, update_question_analysis
-from .classifier import parse_questions_json, stem_hash
+from db.models import Question
 from .llm_client import LLMClient
-from .schemas import QuestionCreate
 
 
 def generate_learning_report(client: LLMClient, paper: list[dict], answers: dict[int, str]) -> str:
@@ -112,97 +111,35 @@ def generate_learning_report_stream(client: LLMClient, paper: list[dict], answer
         max_tokens=1000,
     )
 
-def upsert_questions(conn: sqlite3.Connection, questions: list[dict[str, Any]], source: str = "") -> dict[str, int]:
-    payload: list[QuestionCreate] = []
-    for q in questions:
-        payload.append(
-            QuestionCreate(
-                stem=q["stem"],
-                options=q.get("options", []),
-                answer=q["answer"],
-                question_type=q.get("question_type", "single"),
-                category=q["category"],
-                tag=q.get("tag", ""),
-                difficulty=int(q["difficulty"]),
-                source=source,
-                hash_val=stem_hash(q["stem"]),
-            )
-        )
-    stats = insert_questions_batch(conn, payload, chunk_size=50)
-    return stats.model_dump()
-
-
-def get_or_generate_analysis(conn: sqlite3.Connection, client: LLMClient, question_id: int, retry: int = 3) -> str:
-    question = fetch_question_for_analysis(conn, question_id)
+def get_or_generate_analysis(db: Session, client: LLMClient, question_id: int, retry: int = 3) -> str:
+    question = db.query(Question).filter(Question.id == question_id).first()
     if not question:
         return "未找到该题目。"
     if question.analysis:
         return question.analysis
+    
+    try:
+        options = json.loads(question.options_json) if question.options_json else []
+    except Exception:
+        options = []
+        
     prompt = (
         f"题干：{question.stem}\n"
-        f"选项：{question.options}\n"
+        f"选项：{options}\n"
         f"答案：{question.answer}\n"
         "请给出简洁解析，控制在 4 条要点内，每条不超过 35 字，最后补 1 条易错提醒。"
     )
-    analysis = client.chat_completion(
-        messages=[
-            {"role": "system", "content": "你是严谨的题目解析助手。"},
-            {"role": "user", "content": prompt},
-        ],
-        temperature=0.3,
-        max_tokens=1000,
-    ).strip()
-    update_question_analysis(conn, question_id, analysis, retry=retry)
-    return analysis
-
-
-def generate_questions_for_gap(
-    conn: sqlite3.Connection,
-    client: LLMClient,
-    category: list[str],
-    gap_count: int,
-) -> dict[str, int]:
-    if gap_count <= 0:
-        return {"success": 0, "duplicate": 0, "failed": 0}
-    category_text = "、".join(category) if category else "通用学科"
-    stats = {"success": 0, "duplicate": 0, "failed": 0}
-    remaining = gap_count
-    batch_size = 8
-    max_rounds = max(2, (gap_count + batch_size - 1) // batch_size + 2)
-    empty_round = 0
-    for _ in range(max_rounds):
-        if remaining <= 0:
-            break
-        ask_count = min(batch_size, remaining)
-        prompt = (
-            f"请生成 {ask_count} 道客观题，学科范围：{category_text}。"
-            "输出 JSON 对象，结构为 {\"questions\":[{\"stem\":\"\",\"options\":[],\"answer\":\"\",\"question_type\":\"single\",\"category\":\"\",\"tag\":\"\"}]}。"
-            "每题必须有4个选项和标准答案（A/B/C/D之一）。"
-            "question_type 固定为 single。"
-            "如出现复杂公式，请使用 LaTeX 并包裹在 $...$ 中。"
-            "不要输出任何额外说明。"
-        )
-        generated_text = client.chat_completion(
-            messages=[{"role": "system", "content": "你是题库出题助手。"}, {"role": "user", "content": prompt}],
-            response_format={"type": "json_object"},
-            temperature=0.6,
-            max_tokens=2800,
-        )
-        generated_questions = parse_questions_json(generated_text, client)
-        if category:
-            main_category = category[0]
-            for q in generated_questions:
-                if q.get("category") not in category:
-                    q["category"] = main_category
-        one_stat = upsert_questions(conn, generated_questions, source="llm_gap_fill")
-        stats["success"] += one_stat["success"]
-        stats["duplicate"] += one_stat["duplicate"]
-        stats["failed"] += one_stat["failed"]
-        remaining -= one_stat["success"]
-        if one_stat["success"] == 0:
-            empty_round += 1
-        else:
-            empty_round = 0
-        if empty_round >= 2:
-            break
-    return stats
+    try:
+        analysis = client.chat_completion(
+            messages=[
+                {"role": "system", "content": "你是严谨的题目解析助手。"},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.3,
+            max_tokens=1000,
+        ).strip()
+        question.analysis = analysis
+        db.commit()
+        return analysis
+    except Exception as e:
+        return f"解析生成失败: {e}"

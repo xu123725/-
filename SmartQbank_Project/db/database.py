@@ -9,9 +9,16 @@ from sqlalchemy.orm import sessionmaker, Session
 from config import DB_DIR, DB_PATH, UPLOAD_DIR, is_web_deploy
 from .models import Base
 
-# 默认使用本地 SQLite，当想切换为 SQL Server 2022 时，修改此处即可
-# 例如: SQLALCHEMY_DATABASE_URL = "mssql+pyodbc://xsy:xsy123@localhost/SmartQbank?driver=ODBC+Driver+17+for+SQL+Server"
-SQLALCHEMY_DATABASE_URL = f"mssql+pyodbc://xsy:xsy123@localhost/SmartQbank?driver=ODBC+Driver+17+for+SQL+Server"
+# 支持通过环境变量覆盖数据库连接串，方便 Render 等云端部署
+# 本地默认使用 SQL Server 2022
+SQLALCHEMY_DATABASE_URL = os.getenv(
+    "DATABASE_URL", 
+    "mssql+pyodbc://xsy:xsy123@localhost/SmartQbank?driver=ODBC+Driver+17+for+SQL+Server"
+)
+
+# 如果是 Render 的 PostgreSQL，其 URL 可能是 postgres:// 需要替换为 postgresql://
+if SQLALCHEMY_DATABASE_URL.startswith("postgres://"):
+    SQLALCHEMY_DATABASE_URL = SQLALCHEMY_DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
 # 设置 check_same_thread=False 允许 FastAPI 并发使用 SQLite
 connect_args = {"check_same_thread": False} if "sqlite" in SQLALCHEMY_DATABASE_URL else {}

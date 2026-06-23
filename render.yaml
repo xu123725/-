@@ -1,0 +1,37 @@
+services:
+  # 1. FastAPI 后端服务
+  - type: web
+    name: smartqbank-backend
+    env: python
+    buildCommand: "pip install -r SmartQbank_Project/requirements.txt"
+    startCommand: "cd SmartQbank_Project && uvicorn main_api:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.10.0
+      - key: WEB_DEPLOY
+        value: "true"
+      # 如果你使用 Render 提供的免费 PostgreSQL 数据库，Render 会自动注入 DATABASE_URL
+      # 如果你希望继续使用 SQLite，请取消下方 Persistent Disk 的注释，并设置 DATABASE_URL 为 sqlite:////data/qbank.db
+      # - key: DATABASE_URL
+      #   value: sqlite:////data/qbank.db
+
+    # 如果你想使用 SQLite，Render 需要一个持久化磁盘（注意：这需要 Render 至少 $7/月的付费实例）
+    # disk:
+    #   name: qbank-data
+    #   mountPath: /data
+    #   sizeGB: 1
+
+  # 2. Vue 3 前端静态网站
+  - type: web # Render Static Site
+    name: smartqbank-frontend
+    env: static
+    buildCommand: "cd frontend && npm install && npm run build"
+    staticPublishPath: "./frontend/dist"
+    envVars:
+      - key: VITE_API_BASE_URL
+        # 部署前请将此 URL 替换为上面后端服务生成后的实际域名
+        value: "https://smartqbank-backend.onrender.com/api"
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

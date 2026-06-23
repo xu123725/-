@@ -101,6 +101,27 @@ async def get_questions(params: QueryParams, db: Session = Depends(get_db)):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.get("/{question_id}/analysis")
+async def get_question_analysis(question_id: int, db: Session = Depends(get_db)):
+    """获取题目解析（如果为空则使用大模型实时生成并回写数据库）"""
+    import config
+    from core.processor import get_or_generate_analysis
+    from core.llm_client import LLMClient
+    
+    try:
+        client = LLMClient(
+            api_key=config.get_api_key(),
+            base_url=config.get_api_base_url(),
+            model=config.get_api_model(),
+            timeout=config.IMPORT_LLM_TIMEOUT,
+        )
+        analysis = get_or_generate_analysis(db, client, question_id)
+        return {"status": "success", "analysis": analysis}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.delete("/{question_id}")
 async def delete_question(question_id: int, db: Session = Depends(get_db)):
     """删除单道题目"""

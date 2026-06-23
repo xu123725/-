@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from db.database import init_db
 import config
 
-from routers import qbank, dashboard, chat, exam, wrongbook, settings, troubleshoot
+from routers import qbank, dashboard, exam, wrongbook, settings, troubleshoot
 
 app = FastAPI(
     title="SmartQbank API", 
@@ -40,7 +40,6 @@ async def get_config():
 # 注册子路由
 app.include_router(qbank.router, prefix="/api/qbank", tags=["QBank"])
 app.include_router(dashboard.router, prefix="/api/dashboard", tags=["Dashboard"])
-app.include_router(chat.router, prefix="/api/chat", tags=["Chat"])
 app.include_router(exam.router, prefix="/api/exam", tags=["Exam"])
 app.include_router(wrongbook.router, prefix="/api/wrongbook", tags=["WrongBook"])
 app.include_router(settings.router, prefix="/api/settings", tags=["Settings"])

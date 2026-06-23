@@ -278,7 +278,7 @@ def _validate_payload(payload: Any) -> list[dict[str, Any]]:
         answer = item.answer.strip()
         inferred_type = "fill_blank" if not options else "single"
         requested_type = (item.question_type or "").strip().lower()
-        if requested_type in {"single", "fill_blank", "true_false"}:
+        if requested_type in {"single", "fill_blank", "true_false", "multiple"}:
             question_type = requested_type
         else:
             question_type = inferred_type
@@ -289,9 +289,13 @@ def _validate_payload(payload: Any) -> list[dict[str, Any]]:
             if any(k in opt_str for k in ["正确", "错误", "对", "错", "是", "否"]):
                 question_type = "true_false"
 
+        # 如果选项有多个且答案有多个字符，则自动判定为多选题
+        if question_type == "single" and len(options) > 2 and len(answer) > 1:
+            question_type = "multiple"
+
         if question_type == "single" and not options:
             question_type = "fill_blank"
-        if question_type == "single" and len(options) < 2:
+        if question_type in {"single", "multiple"} and len(options) < 2:
             continue
         if not answer:
             continue
@@ -303,7 +307,7 @@ def _validate_payload(payload: Any) -> list[dict[str, Any]]:
                 "answer": answer,
                 "question_type": question_type,
                 "category": item.category.strip(),
-                "difficulty": 3,
+                "difficulty": item.difficulty,  # 动态提取难度，不再硬编码为 3
                 "tag": tag.strip(),
             }
         )
@@ -346,27 +350,31 @@ def _extract_questions_from_chunk(
         system_prompt = (
             "你是题库结构化助手。请从文本中识别题目并输出 JSON。"
             "必须输出合法 JSON 对象，键名仅使用 questions。"
-            "questions 中每项包含 stem, options, answer, question_type, category, tag。"
-            f"重要：所有题目类别均为 '{fixed_category}'，你不需要进行任何学科分类，只需专注于提取题目内容（题干、选项、答案、题型）。"
+            "questions 中每项包含 stem, options, answer, question_type, category, tag, difficulty。"
+            f"重要：所有题目类别均为 '{fixed_category}'，你不需要进行任何学科分类，只需专注于提取题目内容（题干、选项、答案、题型、难度）。"
             "题型规则："
             "1. 如 options 为空，question_type 必须为 fill_blank。"
             "2. 如 options 为 [正确, 错误]、[对, 错] 等，question_type 必须为 true_false。"
-            "3. 如 options 为多项选择，question_type 必须为 single。"
+            "3. 如 options 为多项选择且答案为单字符，question_type 必须为 single。"
+            "4. 如 options 为多项选择且答案为多字符，question_type 必须为 multiple。"
             "如果遇到无法直接解析的公式，请改写为标准 LaTeX，并使用 $...$ 包裹。"
+            "对于每一题，请根据专业度评估难度 (difficulty)，必须返回 1 到 5 之间的整数。"
             "不得输出额外说明文字。"
         )
     else:
         system_prompt = (
             "你是题库结构化助手。请从文本中识别题目并输出 JSON。"
             "必须输出合法 JSON 对象，键名仅使用 questions。"
-            "questions 中每项包含 stem, options, answer, question_type, category, tag。"
+            "questions 中每项包含 stem, options, answer, question_type, category, tag, difficulty。"
             f"category 只能使用以下{len(MAJOR_CATEGORIES)}类之一：{', '.join(MAJOR_CATEGORIES)}。"
             "若无法完全判断，请归入你认为最相近的大类。"
             "题型规则："
             "1. 如 options 为空，question_type 必须为 fill_blank。"
             "2. 如 options 为 [正确, 错误]、[对, 错] 等，question_type 必须为 true_false。"
-            "3. 如 options 为多项选择，question_type 必须为 single。"
+            "3. 如 options 为多项选择且答案为单字符，question_type 必须为 single。"
+            "4. 如 options 为多项选择且答案为多字符，question_type 必须为 multiple。"
             "如果遇到无法直接解析的公式，请改写为标准 LaTeX，并使用 $...$ 包裹。"
+            "对于每一题，请根据专业度评估难度 (difficulty)，必须返回 1 到 5 之间的整数。"
             "不得输出额外说明文字。"
         )
     user_prompt = f"请结构化以下文本：\n{chunk_text}"

@@ -58,9 +58,9 @@ DB_PATH = DB_DIR / "qbank.db"
 # 目录确保存在逻辑已移至 db.database.init_app_environment 中
 # 以免在 Web 环境构建时因权限问题导致失败
 
-DEFAULT_API_KEY = os.getenv("API_KEY", "sk-3fe69a05f74343378c113884838f468d")
-DEFAULT_API_BASE_URL = os.getenv("API_BASE_URL", "https://api.deepseek.com")
-DEFAULT_API_MODEL = os.getenv("API_MODEL", "deepseek-reasoner")
+DEFAULT_API_KEY = "sk-f6c38a335005435e8fe59da6a3292dec"
+DEFAULT_API_BASE_URL = "https://api.deepseek.com"
+DEFAULT_API_MODEL = "deepseek-chat"
 
 def get_api_key() -> str:
     return DEFAULT_API_KEY

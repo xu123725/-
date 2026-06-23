@@ -75,3 +75,11 @@ class Troubleshooting(Base):
     description = Column(Text)
     tags = Column(String(255))
     created_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow)
+
+class ExamPaperRecord(Base):
+    __tablename__ = 'exam_papers'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    title = Column(String(255), nullable=False)
+    question_ids = Column(Text, nullable=False)  # 存放 JSON 数组
+    created_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow)
