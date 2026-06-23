@@ -3,7 +3,7 @@ import os
 import shutil
 import time
 from pathlib import Path
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text  # 【修复】在这里引入了 text
 from sqlalchemy.orm import sessionmaker, Session
 
 from config import DB_DIR, DB_PATH, UPLOAD_DIR, is_web_deploy
@@ -46,7 +46,8 @@ def get_db():
     try:
         # 如果是 SQLite，开启 WAL 模式以显著提升多用户并发读写性能，防止出现 database is locked
         if "sqlite" in SQLALCHEMY_DATABASE_URL:
-            db.execute("PRAGMA journal_mode=WAL")
+            # 【修复】使用 text() 包裹纯文本 SQL 语句，解决 SQLAlchemy 新版严格限制导致的 500 报错
+            db.execute(text("PRAGMA journal_mode=WAL"))
         yield db
     finally:
         db.close()
