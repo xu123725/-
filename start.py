@@ -6,7 +6,8 @@ import os
 import uvicorn
 import platform
 from pathlib import Path
-
+BASE_DIR = Path(__file__).resolve().parent
+sys.path.append(str(BASE_DIR / "SmartQbank_Project"))
 def main():
     print("="*60)
     print("\n      SmartQbank 智慧学习平台 (Vue 3 + FastAPI 版)\n")

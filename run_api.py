@@ -17,4 +17,4 @@ if __name__ == "__main__":
     print("正在启动 FastAPI 后端服务...")
     # 注意这里传入的模块名是 main_api:app，因为工作目录已经切换到了 SmartQbank_Project
     uvicorn.run("main_api:app", host="0.0.0.0", port=8000, reload=True)
-    sys.path.append(str(Path(__file__).resolve().parent / "SmartQbank_Project"))
+    
