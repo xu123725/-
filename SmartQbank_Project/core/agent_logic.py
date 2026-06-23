@@ -1,9 +1,9 @@
 import logging
 import re
 from typing import Any
+from sqlalchemy.orm import Session
 
 from db.crud import fetch_categories
-from db.database import get_connection
 from .llm_client import LLMClient
 from .retriever import retrieve_questions, retrieve_knowledge
 from .categories import MAJOR_RULES, build_major_map
@@ -69,51 +69,50 @@ def _clean_response_text(text: str) -> str:
     return text.strip()
 
 
-def process_user_request(prompt: str, state: Any) -> str:
-    with get_connection() as conn:
-        categories = fetch_categories(conn)
-        
-        # 1. 尝试识别是否为组卷/生成请求
-        if _needs_paper(prompt):
-            selected = _match_categories(prompt, categories)
-            if not selected:
-                if categories:
-                    return "我已收到组卷请求，但没有识别到学科。当前可用学科有：" + "、".join(categories[:8])
-                return "当前题库里还没有可用学科，请先在“文档入库”中导入题目。"
-            question_type = _parse_question_type(prompt)
-            recent_hours = max(0, int(config.DEFAULT_RECENT_HOURS))
+def process_user_request(prompt: str, state: Any, conn: Session) -> str:
+    categories = fetch_categories(conn)
+    
+    # 1. 尝试识别是否为组卷/生成请求
+    if _needs_paper(prompt):
+        selected = _match_categories(prompt, categories)
+        if not selected:
+            if categories:
+                return "我已收到组卷请求，但没有识别到学科。当前可用学科有：" + "、".join(categories[:8])
+            return "当前题库里还没有可用学科，请先在“文档入库”中导入题目。"
+        question_type = _parse_question_type(prompt)
+        recent_hours = max(0, int(config.DEFAULT_RECENT_HOURS))
+        questions = retrieve_questions(
+            conn=conn,
+            total_count=_parse_count(prompt),
+            categories=selected,
+            recent_hours=recent_hours,
+            question_type=question_type,
+        )
+        relaxed = False
+        if not questions and recent_hours > 0:
             questions = retrieve_questions(
                 conn=conn,
                 total_count=_parse_count(prompt),
                 categories=selected,
-                recent_hours=recent_hours,
+                recent_hours=0,
                 question_type=question_type,
             )
-            relaxed = False
-            if not questions and recent_hours > 0:
-                questions = retrieve_questions(
-                    conn=conn,
-                    total_count=_parse_count(prompt),
-                    categories=selected,
-                    recent_hours=0,
-                    question_type=question_type,
-                )
-                relaxed = bool(questions)
-            
-            if questions:
-                state.generated_paper = questions
-                _reset_exam_state(state)
-                type_text = {"single": "单选题", "fill_blank": "填空题", "all": "全部题型"}.get(question_type, "全部题型")
-                if relaxed:
-                    return f"已为您生成 {len(questions)} 道“{'、'.join(selected)}”{type_text}，并自动放宽了最近使用过滤。现在可以去“模拟考试”里选择刷题练习或模拟考试。"
-                return f"已为您生成 {len(questions)} 道“{'、'.join(selected)}”{type_text}。现在可以去“模拟考试”里选择刷题练习或模拟考试。"
-            return "未找到符合条件的题目，请换一个学科、调整题型，或减少最近使用过滤后重试。"
+            relaxed = bool(questions)
         
-        # 2. 如果不是组卷请求，则进入知识库检索 (RAG)
-        kb_results = retrieve_knowledge(conn, prompt, limit=3)
-        knowledge_context = ""
-        if kb_results:
-            knowledge_context = "\n".join([f"--- 知识库片段 [{r['source']}] ---\n{r['content']}" for r in kb_results])
+        if questions:
+            state.generated_paper = questions
+            _reset_exam_state(state)
+            type_text = {"single": "单选题", "fill_blank": "填空题", "all": "全部题型"}.get(question_type, "全部题型")
+            if relaxed:
+                return f"已为您生成 {len(questions)} 道“{'、'.join(selected)}”{type_text}，并自动放宽了最近使用过滤。现在可以去“模拟考试”里选择刷题练习或模拟考试。"
+            return f"已为您生成 {len(questions)} 道“{'、'.join(selected)}”{type_text}。现在可以去“模拟考试”里选择刷题练习或模拟考试。"
+        return "未找到符合条件的题目，请换一个学科、调整题型，或减少最近使用过滤后重试。"
+    
+    # 2. 如果不是组卷请求，则进入知识库检索 (RAG)
+    kb_results = retrieve_knowledge(conn, prompt, limit=3)
+    knowledge_context = ""
+    if kb_results:
+        knowledge_context = "\n".join([f"--- 知识库片段 [{r['source']}] ---\n{r['content']}" for r in kb_results])
 
     # 3. 调用 LLM 生成回复 (带上检索到的知识)
     client = LLMClient(

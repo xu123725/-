@@ -1,0 +1,39 @@
+@import "tailwindcss";
+
+:root {
+  /* 气象科技感色调定义 */
+  --color-main-deep: #1A3A5C;    /* 深蓝色：专业、科技 */
+  --color-secondary-blue: #4A90D9; /* 亮蓝色：视觉引导 */
+  --color-highlight-gold: #F5A623; /* 橙金色：重点突出 */
+  --color-bg-light: #F5F7FA;      /* 浅灰白：背景色 */
+  --color-text-dark: #2C3E50;     /* 深灰色：主体文字 */
+  --color-tip-bg: #FFF3E0;        /* 淡黄色：提示栏 */
+
+  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
+  
+  background-color: var(--color-bg-light);
+  color: var(--color-text-dark);
+  font-family: var(--sans);
+}
+
+body {
+  margin: 0;
+  background-color: var(--color-bg-light);
+}
+
+/* Element Plus 样式覆盖，使其更符合深蓝调性 */
+.el-button--primary {
+  --el-button-bg-color: var(--color-secondary-blue) !important;
+  --el-button-border-color: var(--color-secondary-blue) !important;
+}
+
+.el-tag--success {
+  --el-tag-text-color: var(--color-secondary-blue) !important;
+}
+
+#app {
+  width: 100%;
+  max-width: none;
+  min-height: 100vh;
+  display: block;
+}

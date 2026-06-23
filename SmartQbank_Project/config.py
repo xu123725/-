@@ -58,42 +58,18 @@ DB_PATH = DB_DIR / "qbank.db"
 # 目录确保存在逻辑已移至 db.database.init_app_environment 中
 # 以免在 Web 环境构建时因权限问题导致失败
 
-DEFAULT_API_KEY = "sk-3fe69a05f74343378c113884838f468d"
-DEFAULT_API_BASE_URL = "https://api.deepseek.com"
-DEFAULT_API_MODEL = "deepseek-reasoner"
-
-def load_settings() -> dict[str, Any]:
-    if is_web_deploy():
-        return {}
-    if SETTINGS_PATH.exists():
-        try:
-            with open(SETTINGS_PATH, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            return {}
-    return {}
-
-def save_settings(settings: dict[str, Any]):
-    if is_web_deploy():
-        print("Web 部署环境跳过本地设置保存")
-        return
-    try:
-        with open(SETTINGS_PATH, "w", encoding="utf-8") as f:
-            json.dump(settings, f, indent=4, ensure_ascii=False)
-    except Exception as e:
-        print(f"保存设置失败: {e}")
-
-# 初始化配置加载
-_current_settings = load_settings()
+DEFAULT_API_KEY = os.getenv("API_KEY", "sk-3fe69a05f74343378c113884838f468d")
+DEFAULT_API_BASE_URL = os.getenv("API_BASE_URL", "https://api.deepseek.com")
+DEFAULT_API_MODEL = os.getenv("API_MODEL", "deepseek-reasoner")
 
 def get_api_key() -> str:
-    return _current_settings.get("api_key") or os.getenv("API_KEY") or DEFAULT_API_KEY
+    return DEFAULT_API_KEY
 
 def get_api_base_url() -> str:
-    return _current_settings.get("api_base_url") or os.getenv("API_BASE_URL") or DEFAULT_API_BASE_URL
+    return DEFAULT_API_BASE_URL
 
 def get_api_model() -> str:
-    return _current_settings.get("api_model") or os.getenv("API_MODEL") or DEFAULT_API_MODEL
+    return DEFAULT_API_MODEL
 
 # 为了兼容旧代码，保留变量引用，但建议使用 getter
 API_KEY = get_api_key()
@@ -101,12 +77,8 @@ API_BASE_URL = get_api_base_url()
 API_MODEL = get_api_model()
 
 def refresh_config():
-    """手动刷新配置变量（从文件重新加载）"""
-    global _current_settings, API_KEY, API_BASE_URL, API_MODEL
-    _current_settings = load_settings()
-    API_KEY = get_api_key()
-    API_BASE_URL = get_api_base_url()
-    API_MODEL = get_api_model()
+    """环境变量模式下，无需主动刷新"""
+    pass
 
 STARTUP_CHECK_MODE = os.getenv("FEATURE_STARTUP_CHECKS", "warn").strip().lower()
 
