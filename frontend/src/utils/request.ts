@@ -3,7 +3,7 @@ import { ElMessage } from 'element-plus'
 
 // 创建 axios 实例
 const service = axios.create({
-  // 优先读取你在 .env.production 里配置的变量，如果没有则默认使用此云端后端 API 地址
+  // 智能拼接基础路径
   baseURL: import.meta.env.VITE_API_BASE_URL || 'https://xuexipingtai.onrender.com', 
   timeout: 10000 // 请求超时时间
 })
@@ -11,7 +11,13 @@ const service = axios.create({
 // request 拦截器
 service.interceptors.request.use(
   config => {
-    // 可以在这里添加 Token 等认证信息
+    // 【核心修复：智能路径纠错拦截】
+    // 如果组件里传过来的 url 既没有以 /api 开头，也没有以 http 开头
+    // 比如只是写了 'dashboard/stats' 或 '/dashboard/stats'
+    if (config.url && !config.url.startsWith('/api') && !config.url.startsWith('http')) {
+      // 自动帮它补上后端口里必须要求的 /api 前缀
+      config.url = config.url.startsWith('/') ? `/api${config.url}` : `/api/${config.url}`
+    }
     return config
   },
   error => {
@@ -23,7 +29,6 @@ service.interceptors.request.use(
 // response 拦截器
 service.interceptors.response.use(
   response => {
-    // 根据后端约定的状态码结构处理
     return response.data
   },
   error => {
@@ -42,7 +47,8 @@ service.interceptors.response.use(
           message = '拒绝访问'
           break
         case 404:
-          message = '请求地址出错'
+          // 打印出具体是哪个合成路径 404 了，方便万一报错时一目了然
+          message = `请求地址出错: ${error.config?.url || ''}`
           break
         case 408:
           message = '请求超时'
