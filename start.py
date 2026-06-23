@@ -3,6 +3,7 @@ import webbrowser
 import time
 import sys
 import os
+import uvicorn
 import platform
 from pathlib import Path
 
@@ -111,4 +112,6 @@ def main():
         print("[INFO] 所有服务已关闭。")
 
 if __name__ == "__main__":
-    main()
+    # 优先读取云端分配的端口，如果没有（比如在本地运行）则默认 8000
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run("main_api:app", host="0.0.0.0", port=port, reload=False) # 云端建议把 reload 改为 False
