@@ -4,7 +4,7 @@ import { ElMessage } from 'element-plus'
 // 创建 axios 实例
 const service = axios.create({
   // 优先读取你在 .env.production 里配置的变量，如果没有则默认使用此云端后端 API 地址
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'https://xuexipingtai.onrender.com/api', 
+  baseURL: import.meta.env.VITE_API_BASE_URL || 'https://xuexipingtai.onrender.com', 
   timeout: 10000 // 请求超时时间
 })
 
