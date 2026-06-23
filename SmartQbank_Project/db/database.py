@@ -11,27 +11,20 @@ from .models import Base
 
 # ==================== 1. 数据库连接串自适应改造 ====================
 # 检测是否运行在 Render 类似云端环境（Render 会自带 RENDER 或 PORT 环境变量）
-IS_CLOUD = "RENDER" in os.environ or "PORT" in os.environ
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# 获取系统配置的数据库 URL
+# 2. 拼接出根目录下 smart_qbank.db 的绝对物理路径
+DB_PATH = os.path.join(BASE_DIR, "smart_qbank.db")
+
+# 3. 优先读取环境变量，如果没有，就强制锁定刚刚定位的绝对路径 SQLite
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 if DATABASE_URL:
-    # 如果配置了环境变量（如未来升级为云端 PostgreSQL），则使用配置的值
     SQLALCHEMY_DATABASE_URL = DATABASE_URL
-    if SQLALCHEMY_DATABASE_URL.startswith("postgres://"):
-        SQLALCHEMY_DATABASE_URL = SQLALCHEMY_DATABASE_URL.replace("postgres://", "postgresql://", 1)
 else:
-    if IS_CLOUD:
-        # 【关键改动】如果在云端且没配云数据库，自动回退到方案一：使用跟随项目的本地 SQLite
-        # 建立在项目根目录下的 smart_qbank.db
-        BASE_DIR = Path(__file__).resolve().parent.parent
-        sqlite_path = BASE_DIR / "smart_qbank.db"
-        print(f"[INFO] 云端环境未检测到远程数据库，自动启用本地 SQLite 存储: {sqlite_path}")
-        SQLALCHEMY_DATABASE_URL = f"sqlite:///{sqlite_path}"
-    else:
-        # 本地开发（Windows）默认依然使用你原本的 SQL Server 2022
-        SQLALCHEMY_DATABASE_URL = "mssql+pyodbc://xsy:xsy123@localhost/SmartQbank?driver=ODBC+Driver+17+for+SQL+Server"
+    # 💥 核心：确保不管是本地 Windows 还是线上 Linux，都以绝对路径加载根目录下的数据库
+    SQLALCHEMY_DATABASE_URL = f"sqlite:///{DB_PATH}"
+
 
 # 设置 check_same_thread=False 允许 FastAPI 并发使用 SQLite
 connect_args = {"check_same_thread": False} if "sqlite" in SQLALCHEMY_DATABASE_URL else {}
