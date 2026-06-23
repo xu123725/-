@@ -3,7 +3,7 @@ import { ElMessage } from 'element-plus'
 
 // 创建 axios 实例
 const service = axios.create({
-  // 智能拼接基础路径
+  // 基础路径：直接指向没有 -1 的后端真实域名
   baseURL: import.meta.env.VITE_API_BASE_URL || 'https://xuexipingtai.onrender.com', 
   timeout: 10000 // 请求超时时间
 })
@@ -11,12 +11,25 @@ const service = axios.create({
 // request 拦截器
 service.interceptors.request.use(
   config => {
-    // 【核心修复：智能路径纠错拦截】
-    // 如果组件里传过来的 url 既没有以 /api 开头，也没有以 http 开头
-    // 比如只是写了 'dashboard/stats' 或 '/dashboard/stats'
-    if (config.url && !config.url.startsWith('/api') && !config.url.startsWith('http')) {
-      // 自动帮它补上后端口里必须要求的 /api 前缀
-      config.url = config.url.startsWith('/') ? `/api${config.url}` : `/api/${config.url}`
+    if (config.url) {
+      // 1. 如果写的是全路径（以 http 开头），不需要修改
+      if (config.url.startsWith('http')) {
+        return config
+      }
+      
+      // 2. 移除最开头的斜杠，方便统一清洗
+      let pureUrl = config.url.startsWith('/') ? config.url.slice(1) : config.url
+      
+      // 3. 彻底防止 /api 重复。如果重复了（比如 api/api/dashboard），就砍掉一个
+      if (pureUrl.startsWith('api/api/')) {
+        pureUrl = pureUrl.replace('api/api/', 'api/')
+      } else if (!pureUrl.startsWith('api/')) {
+        // 4. 如果组件写的是 dashboard/stats，自动给他加上 api/ 前缀
+        pureUrl = 'api/' + pureUrl
+      }
+      
+      // 5. 重新组装回符合 Axios 标准的带有前导斜杠的 url
+      config.url = '/' + pureUrl
     }
     return config
   },
@@ -47,8 +60,8 @@ service.interceptors.response.use(
           message = '拒绝访问'
           break
         case 404:
-          // 打印出具体是哪个合成路径 404 了，方便万一报错时一目了然
-          message = `请求地址出错: ${error.config?.url || ''}`
+          // 404 的时候把最终试图请求的完整 URL 打印出来，如果还错，我们一眼就能看出拼成啥样了
+          message = `请求地址出错 (404): ${error.config?.baseURL || ''}${error.config?.url || ''}`
           break
         case 408:
           message = '请求超时'
