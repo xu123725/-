@@ -13,7 +13,6 @@ build/
 venv/
 
 # 数据库 (本地数据，不上传)
-*.db
 db/backups/
 
 # 用户上传文件
